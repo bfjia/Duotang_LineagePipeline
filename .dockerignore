@@ -1,0 +1,9 @@
+.git
+.gitignore
+output
+data
+*.xz
+*.pyc
+__pycache__
+*.md
+.env
