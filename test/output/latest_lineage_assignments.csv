@@ -1,0 +1,2 @@
+fasta_header,lineage,status,note,conflict,ambiguity_score,scorpio_call,scorpio_support,scorpio_conflict,version,pangolin_version,pangoLEARN_version,pango_version
+hCoV-19/Canada/ON-SLB3141/2021,B.1.167,,Assigned from designation hash.,0.0,,,,,PANGO-v1.38,4.4,,
