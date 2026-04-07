@@ -1,0 +1,63 @@
+name: Docker workflow test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  docker-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Reference outputs present
+        run: |
+          test -f test/output/latest_lineage_assignments.csv
+          test -f test/output/latest_virusseq_metadata.tsv
+          test -f test/test.fasta
+          test -f test/metadata.csv
+
+      - name: Build image
+        run: docker build -t duotang-lineage:test .
+
+      - name: Run pangolin workflow (test inputs)
+        run: |
+          rm -rf output
+          mkdir -p output
+          docker run --rm \
+            -v "$GITHUB_WORKSPACE/output:/output" \
+            -v "$GITHUB_WORKSPACE/test/test.fasta:/data/test.fasta:ro" \
+            -v "$GITHUB_WORKSPACE/test/metadata.csv:/data/metadata.csv:ro" \
+            duotang-lineage:test \
+            -i /data/test.fasta \
+            -m /data/metadata.csv \
+            -t 2 \
+            -o /output
+
+      - name: Compare latest outputs to test/output references
+        run: |
+          set -euo pipefail
+          for f in latest_lineage_assignments.csv latest_virusseq_metadata.tsv; do
+            test -e "output/$f"
+            test -s "output/$f"
+            echo "=== diff test/output/$f vs output/$f ==="
+            if ! diff -u "test/output/$f" "output/$f"; then
+              echo >&2
+              echo >&2 "Mismatch for $f. If pangolin or pangolin-data versions changed, regenerate:"
+              echo >&2 "  docker build -t duotang-lineage:test ."
+              echo >&2 "  mkdir -p output && docker run --rm \\"
+              echo >&2 "    -v \"\$PWD/output:/output\" \\"
+              echo >&2 "    -v \"\$PWD/test/test.fasta:/data/test.fasta:ro\" \\"
+              echo >&2 "    -v \"\$PWD/test/metadata.csv:/data/metadata.csv:ro\" \\"
+              echo >&2 "    duotang-lineage:test -i /data/test.fasta -m /data/metadata.csv -t 2 -o /output"
+              echo >&2 "  cp output/latest_lineage_assignments.csv output/latest_virusseq_metadata.tsv test/output/"
+              exit 1
+            fi
+          done
+          echo "OK: output matches test/output references."
