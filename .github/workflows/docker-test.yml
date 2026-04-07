@@ -37,7 +37,7 @@ jobs:
             duotang-lineage:test \
             -i /data/test.fasta \
             -m /data/metadata.csv \
-            -t 2 \
+            -t 1 \
             -o /output
 
       # LLM Magic. Don't want to deal with comparing symlinks on GitHub Actions. Reviewed and safe to use.
