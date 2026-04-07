@@ -40,24 +40,31 @@ jobs:
             -t 2 \
             -o /output
 
-      - name: Compare latest outputs to test/output references
+      # LLM Magic. Don't want to deal with comparing symlinks. Reviewed and safe to use.
+      # run_pangolin_workflow.sh symlinks latest_* to readlink -f paths under /output/...;
+      # those absolute paths do not exist on the host, so latest_* are broken here — diff the run_* files.
+      - name: Compare run outputs to test/output references
         run: |
           set -euo pipefail
-          for f in latest_lineage_assignments.csv latest_virusseq_metadata.tsv; do
-            test -e "output/$f"
-            test -s "output/$f"
-            echo "=== diff test/output/$f vs output/$f ==="
-            if ! diff -u "test/output/$f" "output/$f"; then
-              echo >&2
-              echo >&2 "Mismatch for $f. If pangolin or pangolin-data versions changed, regenerate:"
-              echo >&2 "  docker build -t duotang-lineage:test ."
-              echo >&2 "  mkdir -p output && docker run --rm \\"
-              echo >&2 "    -v \"\$PWD/output:/output\" \\"
-              echo >&2 "    -v \"\$PWD/test/test.fasta:/data/test.fasta:ro\" \\"
-              echo >&2 "    -v \"\$PWD/test/metadata.csv:/data/metadata.csv:ro\" \\"
-              echo >&2 "    duotang-lineage:test -i /data/test.fasta -m /data/metadata.csv -t 2 -o /output"
-              echo >&2 "  cp output/latest_lineage_assignments.csv output/latest_virusseq_metadata.tsv test/output/"
-              exit 1
-            fi
-          done
+          run_dir="$(find output -maxdepth 1 -type d -name 'run_*' | sort | tail -n1)"
+          test -n "${run_dir}"
+          lineage="${run_dir}/lineage_assignments.csv"
+          enriched="${run_dir}/virusseq.metadata.enriched.tsv"
+          test -f "${lineage}" && test -s "${lineage}"
+          test -f "${enriched}" && test -s "${enriched}"
+          echo "=== diff lineage (test/output/latest_lineage_assignments.csv vs ${lineage}) ==="
+          if ! diff -u test/output/latest_lineage_assignments.csv "${lineage}"; then
+            echo >&2
+            echo >&2 "Lineage CSV mismatch. If pangolin output changed intentionally, refresh test/output from run dir:"
+            echo >&2 "  run_dir=\$(find output -maxdepth 1 -type d -name 'run_*' | sort | tail -n1)"
+            echo >&2 "  cp \"\$run_dir/lineage_assignments.csv\" test/output/latest_lineage_assignments.csv"
+            echo >&2 "  cp \"\$run_dir/virusseq.metadata.enriched.tsv\" test/output/latest_virusseq_metadata.tsv"
+            exit 1
+          fi
+          echo "=== diff enriched metadata (test/output/latest_virusseq_metadata.tsv vs ${enriched}) ==="
+          if ! diff -u test/output/latest_virusseq_metadata.tsv "${enriched}"; then
+            echo >&2
+            echo >&2 "Enriched metadata mismatch. Regenerate as above (both cp lines)."
+            exit 1
+          fi
           echo "OK: output matches test/output references."
