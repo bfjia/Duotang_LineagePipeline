@@ -14,7 +14,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Reference outputs present
         run: |
@@ -40,7 +40,7 @@ jobs:
             -t 2 \
             -o /output
 
-      # LLM Magic. Don't want to deal with comparing symlinks. Reviewed and safe to use.
+      # LLM Magic. Don't want to deal with comparing symlinks on GitHub Actions. Reviewed and safe to use.
       # run_pangolin_workflow.sh symlinks latest_* to readlink -f paths under /output/...;
       # those absolute paths do not exist on the host, so latest_* are broken here — diff the run_* files.
       - name: Compare run outputs to test/output references
