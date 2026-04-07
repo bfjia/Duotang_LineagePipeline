@@ -1,102 +1,146 @@
-# SARS-CoV-2 Lineage Workflow (Pangolin UShER Mode)
+# Duotang Lineage Pipeline
 
-This repository contains a workflow to assign SARS-CoV-2 lineages from an `.xz` compressed multi-FASTA file taken from VirusSeq Data Portal using `pangolin` in UShER (`accurate`) mode, using a conda environment.
+Pipeline for assigning **SARS-CoV-2 lineages** with [Pangolin](https://github.com/cov-lineages/pangolin) in **UShER mode** (`--analysis-mode accurate`), then optionally merging those assignments into **VirusSeq-style metadata**. It can run on a local Conda environment or in Docker.
 
-## Input
+## What it does
 
-- Required input argument: `<input_xz_fasta>`
-- Example input: `data/100SeqTest.fasta.xz`
+1. **Input sequences** — You supply an **uncompressed** multi-FASTA, or omit input to download the latest **VirusSeq Data Portal** full archive (sequences + metadata TSV).
+2. **Lineage calling** — Runs `pangolin` and writes a per-run directory under your output root, plus a curated CSV aligned to FASTA header order.
+3. **Metadata enrichment** — If a metadata file is available (your path or the one from the archive download), the workflow fills lineage-related columns from the pangolin results and records software/data versions from `pangolin --all-versions`.
 
-## Output
+Supporting scripts download optional **CanCOGeN metadata from GCS** and **compare** lineage columns between a metadata TSV and a lineage CSV for QA.
 
-Each run creates a timestamped directory:
+## Repository layout
 
-- `results/pangolin/run_YYYYMMDD_HHMMSS/lineage_report.raw.csv` (native pangolin output)
-- `results/pangolin/run_YYYYMMDD_HHMMSS/lineage_assignments.csv` (final curated output)
-- `results/pangolin/latest_lineage_assignments.csv` (copy of the latest curated output)
-
-The curated output includes:
-
-1. `fasta_header` (column 1)
-2. `lineage` (column 2)
-3. Additional context columns from pangolin where available:
-   - `status`, `note`, `conflict`, `ambiguity_score`
-   - `scorpio_call`, `scorpio_support`, `scorpio_conflict`
-   - `version`, `pangolin_version`, `pangoLEARN_version`, `pango_version`
+| Path | Role |
+|------|------|
+| `run_pangolin_workflow.sh` | Main workflow (Conda or Docker entrypoint) |
+| `environment.yml` | Conda env definition (`python=3.11`, `pangolin`) |
+| `Dockerfile` | Image with Miniforge + env + workflow |
+| `scripts/build_lineage_csv.py` | Builds `lineage_assignments.csv` from FASTA + raw pangolin CSV |
+| `scripts/enrich_virusseq_metadata.py` | Joins lineage CSV into metadata (TSV or `.gz`) |
+| `scripts/download_virusseq_archive.sh` | Downloads and extracts VirusSeq “archive/all” tarball |
+| `scripts/download_gcs_metadata.sh` | Syncs `gs://dnastack-covid-19-data/CanCOGeN/metadata/` (or overrides) |
+| `scripts/compare_lineage_tsv_csv.py` | Writes match/mismatch/missing reports under `comparisons/` |
+| `test/` | Small FASTA + metadata and **reference outputs** for CI |
 
 ## Prerequisites
 
-- Conda (Miniconda/Anaconda) installed and available in `PATH`
+- **Local runs:** [Conda](https://docs.conda.io/) (Miniconda/Miniforge) on `PATH`.
+- **Docker runs:** Docker only (image creates the Conda env for you).
+- **Optional:** `gsutil` + `gcloud auth login` for `download_gcs_metadata.sh`.
+- **Optional:** `curl` or `wget` for `download_virusseq_archive.sh` (also installed in the Docker image).
 
-## Environment
+## Conda environment
 
-- Default conda env name: `Duotang_LineagePipeline`, can specify environment to use via `-e My_Environment_Name`
-- The workflow checks first this env exists.
-- The workflow then checks if `pangolin` exists in the env, the workflow will installs it into this env automatically via conda if it does not.
+Create the environment **before** the first local run (the workflow exits if the env name does not exist):
 
-## Run
+```bash
+conda env create -f environment.yml -n Duotang_LineagePipeline
+```
 
-From repository root:
+If the env exists but `pangolin` is missing, `run_pangolin_workflow.sh` will try to install it with `conda install -n Duotang_LineagePipeline -c conda-forge -c bioconda pangolin`.
+
+## Running the workflow (local)
+
+From the repository root:
 
 ```bash
 chmod +x run_pangolin_workflow.sh
-./run_pangolin_workflow.sh <input_xz_fasta>
+./run_pangolin_workflow.sh --help
 ```
 
+### Options
 
-Optional arguments (with defaults):
-```bash
-./run_pangolin_workflow.sh <input_xz_fasta> \
-  --env-name Duotang_LineagePipeline \
-  --output-root results/pangolin \
-  --threads 4
-```
+| Flag | Description |
+|------|-------------|
+| `-i`, `--input-fasta` | Uncompressed FASTA. If omitted, the script runs `scripts/download_virusseq_archive.sh` and uses `latest_sequences.fasta` / `latest_metadata.tsv` under the download directory. |
+| `-m`, `--metadata-input` | Metadata file for enrichment (TSV/CSV; gzip supported where the enricher opens text). With auto-download, this defaults to the downloaded TSV. |
+| `-d`, `--download-dest-dir` | Where to download/extract the VirusSeq archive (default: `data/virusseq_archive`). |
+| `-e`, `--env-name` | Conda environment name (default: `Duotang_LineagePipeline`). |
+| `-o`, `--output-root` | All run outputs (default: `output`). |
+| `-t`, `--threads` | Pangolin thread count (default: `1`). |
 
-Example:
+**Compressed FASTA (`.xz` / `.gz`) is not supported** — decompress first.
 
-```bash
-./run_pangolin_workflow.sh data/100SeqTest.fasta.xz
-./run_pangolin_workflow.sh data/100SeqTest.fasta.xz --threads 8
-./run_pangolin_workflow.sh data/100SeqTest.fasta.xz --output-root results/custom --env-name Duotang_LineagePipeline
-```
-
-If you need to create the environment first:
+### Examples
 
 ```bash
-conda create -c conda-forge -c bioconda -c nodefaults -n Duotang_LineagePipeline -y pangolin
+# Your FASTA + metadata; 8 threads
+./run_pangolin_workflow.sh -i path/to/sequences.fasta -m path/to/metadata.tsv -t 8
+
+# Custom output directory
+./run_pangolin_workflow.sh -i sequences.fasta -m metadata.tsv -o results/run1
+
+# Download latest VirusSeq archive, run pangolin, enrich with downloaded metadata
+./run_pangolin_workflow.sh -o output -d data/virusseq_archive
 ```
 
-## Notes
+## Outputs
 
-- The script explicitly uses `--analysis-mode accurate` to force UShER mode.
-- FASTA headers are parsed from the decompressed input and used as column 1 in the final CSV.
-- If a header is missing in pangolin output, lineage-related fields are left blank for that row.
-- CSV post-processing logic is in `scripts/build_lineage_csv.py`.
+Each run creates a timestamped directory: `<output-root>/run_YYYYMMDD_HHMMSS/`.
 
-## Pangolin Reference
+| Artifact | Description |
+|----------|-------------|
+| `input.fasta` | Symlink to the FASTA used for this run |
+| `lineage_report.raw.csv` | Pangolin’s native CSV |
+| `lineage_assignments.csv` | Curated CSV: FASTA order, columns from `scripts/build_lineage_csv.py` |
+| `virusseq.metadata.enriched.tsv` | Present when metadata enrichment runs: metadata rows with lineage fields filled |
 
-- Pangolin usage docs: [cov-lineages.org pangolin usage](https://cov-lineages.org/resources/pangolin/usage.html)
+Convenience symlinks under `<output-root>/`:
 
-## Download CanCOGeN Metadata from GCS
+- `latest_lineage_assignments.csv` → latest run’s `lineage_assignments.csv`
+- `latest_virusseq_metadata.tsv` → latest run’s enriched metadata (when enrichment ran)
 
-You can download files from:
+Curated lineage columns include `fasta_header`, `lineage`, and pangolin context fields (`status`, `note`, `conflict`, `ambiguity_score`, scorpio fields, version fields). Details are in `scripts/build_lineage_csv.py`.
 
-- Bucket: `dnastack-covid-19-data`
-- Folder: `CanCOGeN/metadata/`
+## Docker
 
-Using:
+Build and run (mount a host directory on `/output` to keep results):
+
+```bash
+docker build -t duotang-lineage .
+docker run --rm -v "$PWD/output:/output" \
+  -v /path/to/seq.fasta:/data/seq.fasta:ro \
+  -v /path/to/meta.tsv:/data/meta.tsv:ro \
+  duotang-lineage \
+  -i /data/seq.fasta -m /data/meta.tsv -t 8 -o /output
+```
+
+The image **ENTRYPOINT** already passes `-e Duotang_LineagePipeline`. Default **CMD** is `-o /output`; if you override arguments after the image name, include `-o /output` again when you want container output under `/output`.
+
+Download mode inside the container (persist cache on the host):
+
+```bash
+docker run --rm -v "$PWD/output:/output" -v "$PWD/data:/workflow/data" \
+  duotang-lineage -o /output -d data/virusseq_archive
+```
+
+## Continuous integration
+
+On pushes and pull requests to `main`, [`.github/workflows/docker-test.yml`](.github/workflows/docker-test.yml) builds the image, runs the workflow on `test/test.fasta` and `test/metadata.csv`, and `diff`s the run directory against pinned files in `test/output/`. If Pangolin’s outputs change legitimately, refresh the references by copying from the new `run_*` directory into `test/output/` as described in the workflow comments.
+
+## Optional utilities
+
+### CanCOGeN metadata from Google Cloud Storage
 
 ```bash
 ./scripts/download_gcs_metadata.sh
-```
-
-Optional destination directory:
-
-```bash
 ./scripts/download_gcs_metadata.sh data/metadata_snapshot
 ```
 
-Requirements:
+Requires `gsutil` and authentication. Defaults: bucket `dnastack-covid-19-data`, prefix `CanCOGeN/metadata/`. Override with `GS_BUCKET_NAME` and `GS_FOLDER`.
 
-- `gsutil` installed (Google Cloud SDK)
-- Authenticated session (for example: `gcloud auth login`)
+### Compare lineage in metadata TSV vs assignments CSV
+
+```bash
+conda run -n Duotang_LineagePipeline python scripts/compare_lineage_tsv_csv.py \
+  metadata.tsv lineage_assignments.csv --output-dir comparisons
+```
+
+Writes `lineage_matches.csv`, `lineage_mismatches.csv`, and `lineage_missing_between_files.csv`.
+
+## References
+
+- Pangolin usage: [cov-lineages.org — Pangolin usage](https://cov-lineages.org/resources/pangolin/usage.html)
+- VirusSeq archive endpoint (overridable via `ARCHIVE_URL` in `download_virusseq_archive.sh`): `https://singularity.virusseq-dataportal.ca/download/archive/all`
