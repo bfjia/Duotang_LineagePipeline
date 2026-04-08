@@ -1,14 +1,14 @@
 # Duotang Lineage Pipeline
 
-Pipeline for assigning **SARS-CoV-2 lineages** with [Pangolin](https://github.com/cov-lineages/pangolin) in **UShER mode** (`--analysis-mode accurate`), then optionally merging those assignments into **VirusSeq-style metadata**. It can run on a local Conda environment or in Docker.
+Pipeline for assigning **SARS-CoV-2 lineages** with [Pangolin](https://github.com/cov-lineages/pangolin) in **UShER mode** (`--analysis-mode accurate`), then optionally merging those assignments into **iMicroSeq clinical metadata file obtained from https://imicroseq-dataportal.ca/releases**. It can run on a local Conda environment or through Docker.
 
 ## What it does
 
-1. **Input sequences** — You supply an **uncompressed** multi-FASTA, or omit input to download the latest **VirusSeq Data Portal** full archive (sequences + metadata TSV).
+1. **Input sequences** — You supply an **uncompressed** multi-FASTA, or omit input to download the latest **iMicroSeq Data Portal clinical data release bundle** (sequences + metadata TSV).
 2. **Lineage calling** — Runs `pangolin` and writes a per-run directory under your output root, plus a curated CSV aligned to FASTA header order.
-3. **Metadata enrichment** — If a metadata file is available (your path or the one from the archive download), the workflow fills lineage-related columns from the pangolin results and records software/data versions from `pangolin --all-versions`.
+3. **iMicroSeq clinical metadata enrichment** — If a metadata file is available (your path or the one from the archive download), the workflow fills lineage-related columns from the pangolin results and records software/data versions from `pangolin --all-versions`.
 
-Supporting scripts download optional **CanCOGeN metadata from GCS** and **compare** lineage columns between a metadata TSV and a lineage CSV for QA.
+Supporting scripts include download scripts ViralAI's lineage assignments hosted on Google Cloud and comparison scripts for lineage assignments between our pipeline and ViralAI's pipeline for consistency.
 
 ## Repository layout
 
@@ -16,20 +16,20 @@ Supporting scripts download optional **CanCOGeN metadata from GCS** and **compar
 |------|------|
 | `run_pangolin_workflow.sh` | Main workflow (Conda or Docker entrypoint) |
 | `environment.yml` | Conda env definition (`python=3.11`, `pangolin`) |
-| `Dockerfile` | Image with Miniforge + env + workflow |
+| `Dockerfile` | Image with MiniConda + env + workflow |
 | `scripts/build_lineage_csv.py` | Builds `lineage_assignments.csv` from FASTA + raw pangolin CSV |
-| `scripts/enrich_virusseq_metadata.py` | Joins lineage CSV into metadata (TSV or `.gz`) |
-| `scripts/download_virusseq_archive.sh` | Downloads and extracts VirusSeq “archive/all” tarball |
-| `scripts/download_gcs_metadata.sh` | Syncs `gs://dnastack-covid-19-data/CanCOGeN/metadata/` (or overrides) |
-| `scripts/compare_lineage_tsv_csv.py` | Writes match/mismatch/missing reports under `comparisons/` |
+| `scripts/enrich_virusseq_metadata.py` | Joins lineage CSV into iMicroSeq clinical metadata (TSV or `.gz`) |
+| `scripts/download_virusseq_archive.sh` | Downloads and extracts the latest iMicroSeq Clinical Data Release bundle tarball |
+| `scripts/download_gcs_metadata.sh` | Gets ViralAI data from `gs://dnastack-covid-19-data/CanCOGeN/metadata/` (or overrides) |
+| `scripts/compare_lineage_tsv_csv.py` | Writes match/mismatch/missing reports between ViralAI and this lineage assignment pipeline |
 | `test/` | Small FASTA + metadata and **reference outputs** for CI |
 
 ## Prerequisites
 
-- **Local runs:** [Conda](https://docs.conda.io/) (Miniconda/Miniforge) on `PATH`.
+- **Local runs:** [Conda](https://docs.conda.io/) (Miniconda) on `PATH`.
 - **Docker runs:** Docker only (image creates the Conda env for you).
-- **Optional:** `gsutil` + `gcloud auth login` for `download_gcs_metadata.sh`.
-- **Optional:** `curl` or `wget` for `download_virusseq_archive.sh` (also installed in the Docker image).
+- **Optional:** `gsutil` + `gcloud auth login` for `download_gcs_metadata.sh` (NOT installed in the Docker image).
+- **Optional:** `curl` or `wget` for `download_virusseq_archive.sh` (Installed in the Docker image).
 
 ## Conda environment
 
@@ -55,7 +55,7 @@ chmod +x run_pangolin_workflow.sh
 | Flag | Description |
 |------|-------------|
 | `-i`, `--input-fasta` | Uncompressed FASTA. If omitted, the script runs `scripts/download_virusseq_archive.sh` and uses `latest_sequences.fasta` / `latest_metadata.tsv` under the download directory. |
-| `-m`, `--metadata-input` | Metadata file for enrichment (TSV/CSV; gzip supported where the enricher opens text). With auto-download, this defaults to the downloaded TSV. |
+| `-m`, `--metadata-input` | iMicroSeq Clinical metadata file for appending lineage information (TSV/CSV; gzip supported where the enricher opens text). With auto-download, this defaults to the downloaded TSV. |
 | `-d`, `--download-dest-dir` | Where to download/extract the VirusSeq archive (default: `data/virusseq_archive`). |
 | `-e`, `--env-name` | Conda environment name (default: `Duotang_LineagePipeline`). |
 | `-o`, `--output-root` | All run outputs (default: `output`). |
@@ -89,10 +89,8 @@ Each run creates a timestamped directory: `<output-root>/run_YYYYMMDD_HHMMSS/`.
 
 Convenience symlinks under `<output-root>/`:
 
-- `latest_lineage_assignments.csv` → latest run’s `lineage_assignments.csv`
-- `latest_virusseq_metadata.tsv` → latest run’s enriched metadata (when enrichment ran)
-
-Curated lineage columns include `fasta_header`, `lineage`, and pangolin context fields (`status`, `note`, `conflict`, `ambiguity_score`, scorpio fields, version fields). Details are in `scripts/build_lineage_csv.py`.
+- `latest_lineage_assignments.csv` > latest run’s `lineage_assignments.csv`
+- `latest_virusseq_metadata.tsv` > latest run’s enriched metadata (when enrichment ran)
 
 ## Docker
 
@@ -122,7 +120,7 @@ On pushes and pull requests to `main`, [`.github/workflows/docker-test.yml`](.gi
 
 ## Optional utilities
 
-### CanCOGeN metadata from Google Cloud Storage
+### ViralAI metadata from Google Cloud Storage
 
 ```bash
 ./scripts/download_gcs_metadata.sh
@@ -131,11 +129,11 @@ On pushes and pull requests to `main`, [`.github/workflows/docker-test.yml`](.gi
 
 Requires `gsutil` and authentication. Defaults: bucket `dnastack-covid-19-data`, prefix `CanCOGeN/metadata/`. Override with `GS_BUCKET_NAME` and `GS_FOLDER`.
 
-### Compare lineage in metadata TSV vs assignments CSV
+### Compare lineage calls in ViralAI vs this workflow
 
 ```bash
 conda run -n Duotang_LineagePipeline python scripts/compare_lineage_tsv_csv.py \
-  metadata.tsv lineage_assignments.csv --output-dir comparisons
+  viralai_metadata.tsv latest_lineage_assignments.csv --output-dir comparisons
 ```
 
 Writes `lineage_matches.csv`, `lineage_mismatches.csv`, and `lineage_missing_between_files.csv`.
@@ -143,4 +141,3 @@ Writes `lineage_matches.csv`, `lineage_mismatches.csv`, and `lineage_missing_bet
 ## References
 
 - Pangolin usage: [cov-lineages.org — Pangolin usage](https://cov-lineages.org/resources/pangolin/usage.html)
-- VirusSeq archive endpoint (overridable via `ARCHIVE_URL` in `download_virusseq_archive.sh`): `https://singularity.virusseq-dataportal.ca/download/archive/all`
