@@ -74,6 +74,7 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
+#check if conda is available
 if ! command -v conda >/dev/null 2>&1; then
   echo "Error: conda is not available in PATH." >&2
   exit 1
@@ -81,12 +82,20 @@ fi
 
 mkdir -p "${OUTPUT_ROOT}"
 
+#check if the output directory exists
+if [[ ! -d "${OUTPUT_ROOT}" ]]; then
+  echo "Error: output directory does not exist: ${OUTPUT_ROOT}" >&2
+  exit 1
+fi
+
+#check if the conda environment exists
 if ! conda env list | awk -v env="${ENV_NAME}" '$1==env {found=1} END {exit(found?0:1)}'; then
   echo "Error: conda environment not found: ${ENV_NAME}" >&2
   echo "Please create it first, then rerun this workflow." >&2
   exit 1
 fi
 
+#check if pangolin is available in the conda environment, if not install it.
 if ! conda run -n "${ENV_NAME}" pangolin --version >/dev/null 2>&1; then
   echo "pangolin not found in ${ENV_NAME}; installing with conda."
   conda install -n "${ENV_NAME}" -y -c conda-forge -c bioconda pangolin
@@ -103,6 +112,7 @@ LATEST_REPORT="${OUTPUT_ROOT}/latest_lineage_assignments.csv"
 CSV_BUILDER="scripts/build_lineage_csv.py"
 ENRICH_METADATA="scripts/enrich_virusseq_metadata.py"
 DOWNLOAD_SCRIPT="./scripts/download_virusseq_archive.sh"
+
 
 if [[ ! -f "${CSV_BUILDER}" ]]; then
   echo "Error: CSV builder script not found: ${CSV_BUILDER}" >&2
