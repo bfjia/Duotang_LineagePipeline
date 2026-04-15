@@ -30,6 +30,7 @@ Supporting scripts include download scripts ViralAI's lineage assignments hosted
 - **Docker runs:** Docker only (image creates the Conda env for you).
 - **Optional:** `gsutil` + `gcloud auth login` for `download_gcs_metadata.sh` (NOT installed in the Docker image).
 - **Optional:** `curl` or `wget` for `download_virusseq_archive.sh` (Installed in the Docker image).
+- **System requirements:** The workflow requires a minimum of 4cores/16G RAM to produce lineage calls for the entire iMicroSeq Clinical Data within a reasonable time frame (<24hours). Scaling up to 8cores/32G RAM reduces this down to 12hours.
 
 ## Conda environment
 
