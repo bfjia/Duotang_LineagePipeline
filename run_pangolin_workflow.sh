@@ -103,6 +103,7 @@ fi
 
 RUN_ID="$(date +%Y%m%d_%H%M%S)"
 RUN_DIR="${OUTPUT_ROOT}/run_${RUN_ID}"
+LATEST_DIR="latest"
 mkdir -p "${RUN_DIR}"
 
 WORK_FASTA="${RUN_DIR}/input.fasta"
@@ -204,6 +205,16 @@ echo "Linking latest lineage report: ${LATEST_REPORT} -> ${FINAL_REPORT}"
 rm -f "${LATEST_REPORT}"
 ln -s "$(readlink -f "${FINAL_REPORT}")" "${LATEST_REPORT}"
 
+if ! command -v xz >/dev/null 2>&1; then
+  echo "Error: xz is not available in PATH (required for ${LATEST_DIR}/ archives)." >&2
+  exit 1
+fi
+mkdir -p "${LATEST_DIR}"
+XZ_LATEST_REPORT="${LATEST_DIR}/lineage_assignments.csv.xz"
+echo "Writing XZ archive: ${XZ_LATEST_REPORT}"
+rm -f "${XZ_LATEST_REPORT}"
+xz -c -T0 "${FINAL_REPORT}" >"${XZ_LATEST_REPORT}"
+
 
 # Here we merge the lineage assignments with the metadata
 if [[ -n "${METADATA_INPUT}" && -f "${METADATA_INPUT}" ]]; then
@@ -228,6 +239,10 @@ if [[ -n "${METADATA_INPUT}" && -f "${METADATA_INPUT}" ]]; then
       --scorpio-version "${SCORPIO_SOFTWARE_VERSION}"
     echo "Linking latest enriched metadata: ${LATEST_ENRICHED} -> ${ENRICHED_METADATA}"
     ln -sfn "$(readlink -f "${ENRICHED_METADATA}")" "${LATEST_ENRICHED}"
+    XZ_LATEST_ENRICHED="${LATEST_DIR}/virusseq_metadata.tsv.xz"
+    echo "Writing XZ archive: ${XZ_LATEST_ENRICHED}"
+    rm -f "${XZ_LATEST_ENRICHED}"
+    xz -c -T0 "${ENRICHED_METADATA}" >"${XZ_LATEST_ENRICHED}"
     echo "Enriched metadata: ${ENRICHED_METADATA}"
     echo "Latest enriched copy: ${LATEST_ENRICHED}"
   fi
@@ -244,4 +259,5 @@ echo "Workflow complete."
 echo "Raw pangolin report: ${RAW_REPORT}"
 echo "Final merged report: ${FINAL_REPORT}"
 echo "Latest report copy:  ${LATEST_REPORT}"
+echo "Latest report (xz):  ${LATEST_DIR}/lineage_assignments.csv.xz"
 echo "Pangolin runtime:    $(format_duration "${PANGOLIN_RUNTIME_SEC}") (${PANGOLIN_RUNTIME_SEC} seconds)"

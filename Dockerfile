@@ -35,6 +35,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     ca-certificates \
     findutils \
+    xz-utils \
     && rm -rf /var/lib/apt/lists/*
 
 COPY environment.yml /workflow/environment.yml
