@@ -254,6 +254,11 @@ else
   fi
 fi
 
+if [[ -d "${DOWNLOAD_DEST_DIR}" ]]; then
+  echo "Clearing VirusSeq archive cache: ${DOWNLOAD_DEST_DIR}"
+  find "${DOWNLOAD_DEST_DIR}" -mindepth 1 -maxdepth 1 -exec rm -rf {} +
+fi
+
 echo
 echo "Workflow complete."
 echo "Raw pangolin report: ${RAW_REPORT}"
