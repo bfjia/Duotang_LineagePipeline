@@ -259,6 +259,25 @@ if [[ -d "${DOWNLOAD_DEST_DIR}" ]]; then
   find "${DOWNLOAD_DEST_DIR}" -mindepth 1 -maxdepth 1 -exec rm -rf {} +
 fi
 
+if command -v git >/dev/null 2>&1 && git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+  RUN_DATETIME="$(date '+%Y-%m-%d %H:%M:%S %Z')"
+  if [[ -d "${LATEST_DIR}" ]]; then
+    git add "${LATEST_DIR}/"
+    if ! git diff --cached --quiet -- "${LATEST_DIR}/"; then
+      COMMIT_MSG="Update latest outputs from pangolin workflow run ${RUN_DATETIME}"
+      git commit -m "${COMMIT_MSG}"
+      echo "Committed ${LATEST_DIR}/ updates with run timestamp."
+    else
+      echo "No changes in ${LATEST_DIR}/ to commit."
+    fi
+  else
+    echo "Skipping commit; ${LATEST_DIR}/ does not exist."
+  fi
+else
+  echo "Skipping commit; not inside a git repository."
+fi
+
+
 echo
 echo "Workflow complete."
 echo "Raw pangolin report: ${RAW_REPORT}"
@@ -266,3 +285,4 @@ echo "Final merged report: ${FINAL_REPORT}"
 echo "Latest report copy:  ${LATEST_REPORT}"
 echo "Latest report (xz):  ${LATEST_DIR}/lineage_assignments.csv.xz"
 echo "Pangolin runtime:    $(format_duration "${PANGOLIN_RUNTIME_SEC}") (${PANGOLIN_RUNTIME_SEC} seconds)"
+
