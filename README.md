@@ -111,8 +111,16 @@ The image **ENTRYPOINT** already passes `-e Duotang_LineagePipeline`. Default **
 Download mode inside the container (persist cache on the host):
 
 ```bash
-docker run --rm -v "$PWD/output:/output" -v "$PWD/data:/workflow/data" \
-  duotang-lineage -o /output -d data/virusseq_archive
+docker run --rm -v "$PWD/output:/output" -v "$PWD/latest:/workflow/latest" -v "$PWD/data:/workflow/data" \
+  duotang-lineage -o /output -d data/virusseq_archive -t 12
+```
+
+Download mode with custom URL (i.e. dev) inside the container (persist cache on the host):
+
+```bash
+export ARCHIVE_URL="https://singularity.dev.virusseq-dataportal.ca/download/archive/all"
+docker run --rm -e ARCHIVE_URL -v "$PWD/output:/output" -v "$PWD/latest:/workflow/latest" -v "$PWD/data:/workflow/data" \
+  duotang-lineage -o /output -d data/virusseq_archive -t 12
 ```
 
 ## Continuous integration
